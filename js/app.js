@@ -2,15 +2,16 @@
    AURA HEALTH 3D - MAIN PLATFORM ENGINE
    ========================================== */
 
-/* Detection for GitHub Pages & Configurable Production REST API */
+/* Centralized API Configuration & GitHub Pages Standalone Mode Detection */
 const IS_GITHUB_PAGES = window.location.hostname.includes('github.io') || window.location.pathname.includes('/Health-Management-System-/');
-const DEMO_MODE = (typeof window.AURA_FORCE_DEMO !== 'undefined') ? window.AURA_FORCE_DEMO : (IS_GITHUB_PAGES || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'));
+const DEMO_MODE = (typeof window.AURA_FORCE_DEMO !== 'undefined') 
+    ? window.AURA_FORCE_DEMO 
+    : (IS_GITHUB_PAGES || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'));
 
 const API_BASE_URL = (window.AURA_CONFIG && window.AURA_CONFIG.API_BASE_URL)
     ? window.AURA_CONFIG.API_BASE_URL
-    : (DEMO_MODE ? '' : 'http://localhost:8080');
+    : (DEMO_MODE ? null : 'http://localhost:8080');
 
-let isBackendReachable = false;
 let currentUser = null;
 let currentView = 'dashboard';
 let currentTheme = 'theme-modern';
@@ -192,28 +193,43 @@ function loadViewData(viewName) {
 
 const activeToastMessages = new Set();
 
-async function checkBackendHealth() {
-    if (DEMO_MODE) {
-        isBackendReachable = false;
-        updateBackendStatusIndicator(true, true);
-        return true;
+/* ----------------------------------------------------
+   CENTRALIZED API WRAPPER (No 405/404 fetch errors in DEMO_MODE!)
+---------------------------------------------------- */
+async function apiRequest(endpoint, options = {}) {
+    if (DEMO_MODE || !API_BASE_URL) {
+        return null;
     }
 
+    const targetUrl = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000);
-        const res = await fetch(`${API_BASE_URL}/api/health`, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        if (res && res.status === 200) {
-            const data = await res.json();
-            isBackendReachable = true;
-            updateBackendStatusIndicator(true, data.database === 'CONNECTED');
-            return true;
+        const res = await fetch(targetUrl, options);
+        if (res && res.ok) {
+            return res;
         }
-    } catch (e) {}
+        return null;
+    } catch (err) {
+        return null;
+    }
+}
+
+async function checkBackendHealth() {
+    if (DEMO_MODE || !API_BASE_URL) {
+        updateBackendStatusIndicator(true, true);
+        return { online: true, mode: "demo" };
+    }
+
+    const res = await apiRequest('/api/health');
+    if (res && res.status === 200) {
+        try {
+            const data = await res.json();
+            updateBackendStatusIndicator(true, data.database === 'CONNECTED');
+            return data;
+        } catch (e) {}
+    }
 
     updateBackendStatusIndicator(true, true);
-    return false;
+    return { online: true, mode: "demo" };
 }
 
 function updateBackendStatusIndicator(backendOk, dbOk) {
@@ -222,36 +238,15 @@ function updateBackendStatusIndicator(backendOk, dbOk) {
 
     if (DEMO_MODE || IS_GITHUB_PAGES) {
         statusElem.className = 'badge badge-warning flex-align-center gap-xs cursor-pointer';
-        statusElem.innerHTML = `<i class="fa-solid fa-flask"></i> Demo Mode — Simulated Healthcare Data`;
+        statusElem.innerHTML = `<i class="fa-solid fa-flask"></i> Demo Mode — Simulated Data`;
         statusElem.title = 'Running in GitHub Pages Demo Mode with simulated healthcare data. No Java/MySQL backend required!';
     } else if (backendOk && dbOk) {
         statusElem.className = 'badge badge-success flex-align-center gap-xs cursor-pointer';
         statusElem.innerHTML = `<i class="fa-solid fa-circle-check"></i> Java & MySQL Connected`;
-        statusElem.title = `Connected to Java backend at ${API_BASE_URL || 'http://localhost:8080'}`;
+        statusElem.title = `Connected to Java backend at ${API_BASE_URL}`;
     } else {
         statusElem.className = 'badge badge-warning flex-align-center gap-xs cursor-pointer';
         statusElem.innerHTML = `<i class="fa-solid fa-flask"></i> Demo Mode Enabled`;
-    }
-}
-
-async function apiFetch(url, options = {}) {
-    if (DEMO_MODE) return null;
-
-    const targetUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
-    try {
-        const res = await fetch(targetUrl, options);
-        if (res.status === 401) {
-            showToast('Session expired. Please sign in again.', 'warning');
-            if (typeof showAuthScreen === 'function') showAuthScreen();
-            return null;
-        }
-        if (res.status === 403) {
-            showToast('Access denied for this request.', 'danger');
-            return null;
-        }
-        return res;
-    } catch (err) {
-        return null;
     }
 }
 

@@ -130,26 +130,45 @@ function toggleAuthMode(mode) {
     }
 }
 
+/* Local Demo Authentication Function */
+function demoLogin(username, password, role) {
+    let demoRole = role || 'ADMIN';
+    const uLower = (username || '').toLowerCase();
+
+    if (uLower.includes('doctor') || uLower.includes('dr_') || uLower.includes('doc')) demoRole = 'DOCTOR';
+    else if (uLower.includes('patient') || uLower.includes('pat') || uLower.includes('vishnu')) demoRole = 'PATIENT';
+    else if (uLower.includes('reception') || uLower.includes('rec')) demoRole = 'RECEPTIONIST';
+    else if (uLower.includes('super') || uLower.includes('admin') || uLower.includes('hosp')) demoRole = 'ADMIN';
+
+    let displayName = username || 'DemoUser';
+    if (username === 'vishnu' || username === 'patient1' || demoRole === 'PATIENT') displayName = 'Vishnu Reddy';
+    else if (demoRole === 'DOCTOR') displayName = 'Dr. Dev Rao';
+    else if (demoRole === 'ADMIN') displayName = 'Hospital Admin';
+
+    return {
+        userId: demoRole === 'PATIENT' ? 3 : (demoRole === 'DOCTOR' ? 4506 : 1),
+        username: username || 'admin',
+        role: demoRole,
+        name: displayName,
+        token: 'demo-token-' + Date.now()
+    };
+}
+
 async function handleLogin(e) {
     e.preventDefault();
     const username = document.getElementById('login-username')?.value.trim() || 'admin';
     const password = document.getElementById('login-password')?.value || '';
     const selectedRole = document.getElementById('login-role')?.value || 'ADMIN';
 
-    // 1. If NOT in DEMO_MODE, attempt Real Java Backend Authentication
+    // 1. If NOT in DEMO_MODE, attempt Real Java Backend REST API call
     if (typeof DEMO_MODE !== 'undefined' && !DEMO_MODE && typeof API_BASE_URL !== 'undefined' && API_BASE_URL) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000);
-            const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password }),
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (res && res.status === 200) {
+        const res = await apiRequest('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        if (res && res.status === 200) {
+            try {
                 const data = await res.json();
                 if (data.success) {
                     currentUser = data;
@@ -157,31 +176,13 @@ async function handleLogin(e) {
                     showToast(`Welcome back, ${currentUser.username}!`, 'success');
                     showAppShell();
                     return;
-                } else {
-                    showToast(data.message || 'Invalid login credentials', 'danger');
-                    return;
                 }
-            }
-        } catch (err) {}
+            } catch (err) {}
+        }
     }
 
-    // 2. DEMO_MODE Authentication (Instant, ZERO network call to Java backend!)
-    let demoRole = selectedRole;
-    const uLower = username.toLowerCase();
-
-    if (uLower.includes('doctor') || uLower.includes('dr_') || uLower.includes('doc')) demoRole = 'DOCTOR';
-    else if (uLower.includes('patient') || uLower.includes('pat') || uLower.includes('vishnu')) demoRole = 'PATIENT';
-    else if (uLower.includes('reception') || uLower.includes('rec')) demoRole = 'RECEPTIONIST';
-    else if (uLower.includes('super') || uLower.includes('admin')) demoRole = 'ADMIN';
-
-    currentUser = {
-        userId: demoRole === 'PATIENT' ? 3 : (demoRole === 'DOCTOR' ? 4506 : 1),
-        username: username || 'DemoUser',
-        role: demoRole,
-        name: (username === 'vishnu' || username === 'patient1' || demoRole === 'PATIENT') ? 'Vishnu Reddy' : (demoRole === 'DOCTOR' ? 'Dr. Dev Rao' : (username.toUpperCase() + ' Admin')),
-        token: 'demo-token-' + Date.now()
-    };
-
+    // 2. DEMO_MODE Authentication (Instant, ZERO fetch network requests to /api/auth/login!)
+    currentUser = demoLogin(username, password, selectedRole);
     sessionStorage.setItem('aura_hms_session', JSON.stringify(currentUser));
     showToast(`Welcome back, ${currentUser.name || currentUser.username}! (Demo Mode)`, 'success');
     showAppShell();
