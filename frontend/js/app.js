@@ -2,12 +2,15 @@
    AURA HEALTH 3D - MAIN PLATFORM ENGINE
    ========================================== */
 
-/* Configurable Production API URL (e.g. window.AURA_CONFIG = { API_BASE_URL: 'https://your-java-backend.up.railway.app' }) */
+/* Detection for GitHub Pages & Configurable Production REST API */
+const IS_GITHUB_PAGES = window.location.hostname.includes('github.io') || window.location.pathname.includes('/Health-Management-System-/');
+const DEMO_MODE = (typeof window.AURA_FORCE_DEMO !== 'undefined') ? window.AURA_FORCE_DEMO : (IS_GITHUB_PAGES || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'));
+
 const API_BASE_URL = (window.AURA_CONFIG && window.AURA_CONFIG.API_BASE_URL)
     ? window.AURA_CONFIG.API_BASE_URL
-    : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' ? 'http://localhost:8080' : '');
+    : (DEMO_MODE ? '' : 'http://localhost:8080');
 
-let isDemoMode = false;
+let isBackendReachable = false;
 let currentUser = null;
 let currentView = 'dashboard';
 let currentTheme = 'theme-modern';
@@ -89,7 +92,6 @@ function buildSection3DScene(viewName) {
     scene.add(mesh);
     themeObjects.push(mesh);
 
-    // Particle field
     const particlesCount = 200;
     const posArray = new Float32Array(particlesCount * 3);
     for (let i = 0; i < particlesCount * 3; i++) {
@@ -111,7 +113,7 @@ function buildSection3DScene(viewName) {
 function animate3D() {
     animationFrameId = requestAnimationFrame(animate3D);
 
-    themeObjects.forEach((obj, idx) => {
+    themeObjects.forEach((obj) => {
         if (obj.isMesh) {
             obj.rotation.x += 0.003;
             obj.rotation.y += 0.005;
@@ -191,6 +193,12 @@ function loadViewData(viewName) {
 const activeToastMessages = new Set();
 
 async function checkBackendHealth() {
+    if (DEMO_MODE) {
+        isBackendReachable = false;
+        updateBackendStatusIndicator(true, true);
+        return true;
+    }
+
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000);
@@ -198,14 +206,12 @@ async function checkBackendHealth() {
         clearTimeout(timeoutId);
         if (res && res.status === 200) {
             const data = await res.json();
-            isDemoMode = false;
+            isBackendReachable = true;
             updateBackendStatusIndicator(true, data.database === 'CONNECTED');
             return true;
         }
     } catch (e) {}
 
-    // On static GitHub Pages deployment, automatically enable DEMO MODE without blocking errors
-    isDemoMode = true;
     updateBackendStatusIndicator(true, true);
     return false;
 }
@@ -214,21 +220,23 @@ function updateBackendStatusIndicator(backendOk, dbOk) {
     const statusElem = document.getElementById('backend-status-indicator');
     if (!statusElem) return;
 
-    if (isDemoMode || window.location.hostname.includes('github.io')) {
+    if (DEMO_MODE || IS_GITHUB_PAGES) {
         statusElem.className = 'badge badge-warning flex-align-center gap-xs cursor-pointer';
-        statusElem.innerHTML = `<i class="fa-solid fa-flask"></i> Standalone Demo Mode`;
-        statusElem.title = 'Running in GitHub Pages Demo Mode with simulated live data. No Java backend required!';
+        statusElem.innerHTML = `<i class="fa-solid fa-flask"></i> Demo Mode — Simulated Healthcare Data`;
+        statusElem.title = 'Running in GitHub Pages Demo Mode with simulated healthcare data. No Java/MySQL backend required!';
     } else if (backendOk && dbOk) {
         statusElem.className = 'badge badge-success flex-align-center gap-xs cursor-pointer';
         statusElem.innerHTML = `<i class="fa-solid fa-circle-check"></i> Java & MySQL Connected`;
         statusElem.title = `Connected to Java backend at ${API_BASE_URL || 'http://localhost:8080'}`;
     } else {
-        statusElem.className = 'badge badge-danger flex-align-center gap-xs cursor-pointer';
-        statusElem.innerHTML = `<i class="fa-solid fa-plug-circle-xmark"></i> Server Offline`;
+        statusElem.className = 'badge badge-warning flex-align-center gap-xs cursor-pointer';
+        statusElem.innerHTML = `<i class="fa-solid fa-flask"></i> Demo Mode Enabled`;
     }
 }
 
 async function apiFetch(url, options = {}) {
+    if (DEMO_MODE) return null;
+
     const targetUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     try {
         const res = await fetch(targetUrl, options);
@@ -243,10 +251,6 @@ async function apiFetch(url, options = {}) {
         }
         return res;
     } catch (err) {
-        if (!isDemoMode) {
-            isDemoMode = true;
-            updateBackendStatusIndicator(true, true);
-        }
         return null;
     }
 }

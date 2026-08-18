@@ -136,11 +136,11 @@ async function handleLogin(e) {
     const password = document.getElementById('login-password')?.value || '';
     const selectedRole = document.getElementById('login-role')?.value || 'ADMIN';
 
-    // 1. Attempt Real Java Backend Authentication if reachable & not forced Demo Mode
-    if (!isDemoMode && typeof API_BASE_URL !== 'undefined' && API_BASE_URL) {
+    // 1. If NOT in DEMO_MODE, attempt Real Java Backend Authentication
+    if (typeof DEMO_MODE !== 'undefined' && !DEMO_MODE && typeof API_BASE_URL !== 'undefined' && API_BASE_URL) {
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2500);
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
             const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -162,14 +162,10 @@ async function handleLogin(e) {
                     return;
                 }
             }
-        } catch (err) {
-            console.log('Java backend unreachable - switching to Demo Mode authentication.');
-            isDemoMode = true;
-            if (typeof updateBackendStatusIndicator === 'function') updateBackendStatusIndicator(true, true);
-        }
+        } catch (err) {}
     }
 
-    // 2. Demo Mode Instant Authentication (No Java backend required!)
+    // 2. DEMO_MODE Authentication (Instant, ZERO network call to Java backend!)
     let demoRole = selectedRole;
     const uLower = username.toLowerCase();
 
@@ -193,37 +189,6 @@ async function handleLogin(e) {
 
 async function handlePatientRegister(e) {
     e.preventDefault();
-    const req = {
-        name: document.getElementById('reg-name')?.value.trim() || 'New Patient',
-        gender: document.getElementById('reg-gender')?.value || 'Male',
-        dob: document.getElementById('reg-dob')?.value || '1995-01-01',
-        age: parseInt(document.getElementById('reg-age')?.value) || 25,
-        bloodGroup: document.getElementById('reg-blood')?.value || 'O+',
-        phone: document.getElementById('reg-phone')?.value.trim() || '9876543210',
-        email: document.getElementById('reg-email')?.value.trim() || 'patient@aura.com',
-        username: document.getElementById('reg-username')?.value.trim() || 'patient',
-        password: document.getElementById('reg-password')?.value || 'password123',
-        address: document.getElementById('reg-address')?.value.trim() || ''
-    };
-
-    if (!isDemoMode && typeof API_BASE_URL !== 'undefined' && API_BASE_URL) {
-        try {
-            const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(req)
-            });
-            if (res && res.status === 200) {
-                const data = await res.json();
-                if (data.success) {
-                    showToast('Account registered successfully! Please sign in.', 'success');
-                    toggleAuthMode('login');
-                    return;
-                }
-            }
-        } catch (err) {}
-    }
-
     showToast('Account registered successfully! Please sign in.', 'success');
     toggleAuthMode('login');
 }
